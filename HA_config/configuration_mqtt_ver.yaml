@@ -1,0 +1,41 @@
+
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+
+input_button : !include_dir_merge_named medbox/button
+input_number: !include_dir_merge_named medbox/number
+input_select: !include_dir_merge_named medbox/select
+input_datetime: !include_dir_merge_named medbox/datetime
+input_boolean: !include_dir_merge_named medbox/boolean
+template: !include_dir_merge_list medbox/template
+counter: !include_dir_merge_named medbox/counter
+history:
+recorder:
+  exclude:
+    entities:
+      - sensor.medibox_medibox_raw_weight
+      - sensor.medibox_medibox_current_weight_window_avg
+      - automation.medibox_mqtt_bridge
+
+mqtt_statestream:
+  base_topic: homeassistant                # choose any prefix
+  publish_attributes: false
+  publish_timestamps: false
+  include:
+    entities:
+      - input_number.weight_per_pill
+      - input_number.buzzer_delay
+      - input_number.max_reminder_time
+      - input_select.pill_scale_state
+      - input_datetime.medibox_morning_time
+      - input_datetime.medibox_noon_time
+      - input_datetime.medibox_night_time

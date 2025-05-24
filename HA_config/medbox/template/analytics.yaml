@@ -1,0 +1,36 @@
+- sensor:
+  - name: "Medicine total doses"
+    state_class: "total"
+    unit_of_measurement: ""
+    state: >
+      {{ 
+        states('counter.medicine_on_time')|int(0)
+        + states('counter.medicine_missed')|int(0)
+        + states('counter.medicine_outside_window')|int(0)
+      }}
+  - name: "Medicine on-time rate"
+    unit_of_measurement: "%"
+    state_class: "total"
+    state: >
+      {% set total =
+         states('counter.medicine_on_time')|int(0)
+         + states('counter.medicine_missed')|int(0)
+         + states('counter.medicine_outside_window')|int(0)
+      %}
+      {% set ontime = states('counter.medicine_on_time')|int(0) %}
+      {{ (ontime / total * 100) | round(1) if total > 0 else 0 }}
+  - name: medibox_on_time_count_tracker
+    unique_id: medibox_on_time_count_tracker
+    state_class: "total"
+    unit_of_measurement: ""
+    state: "{{ states('counter.medicine_on_time') | int }}"
+  - name: medibox_missed_count_tracker
+    unique_id: medibox_missed_count_tracker
+    state_class: "total"
+    unit_of_measurement: ""
+    state: "{{ states('counter.medicine_missed') | int }}"
+  - name: medibox_off_schd_count_tracker
+    unique_id: medibox_off_schd_count_tracker
+    state_class: "total"
+    unit_of_measurement: ""
+    state: "{{ states('counter.medicine_outside_window') | int }}"

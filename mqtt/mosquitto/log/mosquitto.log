@@ -1,0 +1,85 @@
+1747665980: mosquitto version 2.0.21 terminating
+1747665980: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1747665981: mosquitto version 2.0.21 starting
+1747665981: Config loaded from /mosquitto/config/mosquitto.conf.
+1747665981: Opening ipv4 listen socket on port 1883.
+1747665981: Opening ipv6 listen socket on port 1883.
+1747665981: mosquitto version 2.0.21 running
+1747665991: New connection from 172.17.0.1:39830 on port 1883.
+1747665991: New client connected from 172.17.0.1:39830 as 2lpMIR7DaQoHU9c4lXgdkQ (p2, c1, k60, u'cits5506').
+1747665991: Client 2lpMIR7DaQoHU9c4lXgdkQ disconnected.
+1747665991: New connection from 172.17.0.1:39844 on port 1883.
+1747665991: New client connected from 172.17.0.1:39844 as 7wF9CBxLkeT98eIFOFJuHq (p2, c1, k60, u'cits5506').
+1747666021: Client 7wF9CBxLkeT98eIFOFJuHq disconnected.
+1747666021: New connection from 172.17.0.1:43524 on port 1883.
+1747666021: New client connected from 172.17.0.1:43524 as 77S4vIBeShYCvP9dJV99pL (p2, c1, k60, u'cits5506').
+1747666278: Client 77S4vIBeShYCvP9dJV99pL disconnected.
+1747666278: New connection from 172.17.0.1:34916 on port 1883.
+1747666278: New client connected from 172.17.0.1:34916 as 2UCNZBv48MfEtpM0jsZ83a (p2, c1, k60, u'cits5506').
+1747666324: Client 2UCNZBv48MfEtpM0jsZ83a disconnected.
+1747666324: New connection from 172.17.0.1:60294 on port 1883.
+1747666324: New client connected from 172.17.0.1:60294 as 7xsyO8tHsaPnWr7cpLI110 (p2, c1, k60, u'cits5506').
+1747666785: Client 7xsyO8tHsaPnWr7cpLI110 disconnected.
+1747666827: New connection from 172.17.0.1:60660 on port 1883.
+1747666827: New client connected from 172.17.0.1:60660 as 46jwYhgEEZWIFC7My8j9QW (p2, c1, k60, u'cits5506').
+1747666827: Client 46jwYhgEEZWIFC7My8j9QW disconnected.
+1747666827: New connection from 172.17.0.1:60666 on port 1883.
+1747666827: New client connected from 172.17.0.1:60666 as 4BmN5rfoy40IQeXrVcRKn5 (p2, c1, k60, u'cits5506').
+1747666916: Client 4BmN5rfoy40IQeXrVcRKn5 closed its connection.
+1747666926: New connection from 172.17.0.1:58216 on port 1883.
+1747666926: New client connected from 172.17.0.1:58216 as 4BmN5rfoy40IQeXrVcRKn5 (p2, c1, k60, u'cits5506').
+1747667018: Client 4BmN5rfoy40IQeXrVcRKn5 disconnected.
+1747667112: New connection from 172.17.0.1:48602 on port 1883.
+1747667112: New client connected from 172.17.0.1:48602 as 2m1Ejid8du1xYVzVcfhLsY (p2, c1, k60, u'cits5506').
+1747667112: Client 2m1Ejid8du1xYVzVcfhLsY disconnected.
+1747667112: New connection from 172.17.0.1:48616 on port 1883.
+1747667112: New client connected from 172.17.0.1:48616 as 6k0nd9NBAL7pvWxHKv3IyH (p2, c1, k60, u'cits5506').
+1747667225: Client 6k0nd9NBAL7pvWxHKv3IyH closed its connection.
+1747667229: New connection from 172.17.0.1:39736 on port 1883.
+1747667229: New client connected from 172.17.0.1:39736 as 3SwORFzQqaku14VwOIMNkL (p2, c1, k60, u'cits5506').
+1747667334: Client 3SwORFzQqaku14VwOIMNkL disconnected.
+1747667487: New connection from 172.17.0.1:34810 on port 1883.
+1747667487: New client connected from 172.17.0.1:34810 as 1KDatPqAgsanAdNoih1HPn (p2, c1, k60, u'cits5506').
+1747667487: Client 1KDatPqAgsanAdNoih1HPn disconnected.
+1747667487: New connection from 172.17.0.1:34812 on port 1883.
+1747667487: New client connected from 172.17.0.1:34812 as 6A8XS0Hn8DRTGEdfeWxIWP (p2, c1, k60, u'cits5506').
+1747667782: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1747667987: New connection from 172.17.0.1:42596 on port 1883.
+1747667987: New client connected from 172.17.0.1:42596 as medibox-d83bda45e230 (p2, c0, k15, u'cits5506').
+1747667994: New connection from 172.17.0.1:47190 on port 1883.
+1747667994: Client medibox-d83bda45e230 already connected, closing old connection.
+1747667994: New client connected from 172.17.0.1:47190 as medibox-d83bda45e230 (p2, c0, k15, u'cits5506').
+1747668017: Client medibox-d83bda45e230 has exceeded timeout, disconnecting.
+1747668020: New connection from 172.17.0.1:55730 on port 1883.
+1747668020: New client connected from 172.17.0.1:55730 as medibox-d83bda45e230 (p2, c0, k15, u'cits5506').
+1747668027: New connection from 172.17.0.1:46932 on port 1883.
+1747668027: Client medibox-d83bda45e230 already connected, closing old connection.
+1747668027: New client connected from 172.17.0.1:46932 as medibox-d83bda45e230 (p2, c0, k15, u'cits5506').
+1747668034: New connection from 172.17.0.1:52052 on port 1883.
+1747668034: Client medibox-d83bda45e230 already connected, closing old connection.
+1747668034: New client connected from 172.17.0.1:52052 as medibox-d83bda45e230 (p2, c0, k15, u'cits5506').
+1747668040: New connection from 172.17.0.1:52054 on port 1883.
+1747668040: Client medibox-d83bda45e230 already connected, closing old connection.
+1747668040: New client connected from 172.17.0.1:52054 as medibox-d83bda45e230 (p2, c0, k15, u'cits5506').
+1747669583: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1747669600: Client medibox-d83bda45e230 closed its connection.
+1747670124: Client 6A8XS0Hn8DRTGEdfeWxIWP closed its connection.
+1747670149: New connection from 172.17.0.1:49586 on port 1883.
+1747670149: New client connected from 172.17.0.1:49586 as 6A8XS0Hn8DRTGEdfeWxIWP (p2, c1, k60, u'cits5506').
+1747671384: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1747671441: Client 6A8XS0Hn8DRTGEdfeWxIWP disconnected.
+1747673185: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1747674986: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1747676787: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1747678588: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1747680389: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1747682190: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1747682971: mosquitto version 2.0.21 terminating
+1747682971: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1747684033: mosquitto version 2.0.21 starting
+1747684033: Config loaded from /mosquitto/config/mosquitto.conf.
+1747684033: Opening ipv4 listen socket on port 1883.
+1747684033: Opening ipv6 listen socket on port 1883.
+1747684033: mosquitto version 2.0.21 running
+1747685834: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1747707494: Saving in-memory database to /mosquitto/data//mosquitto.db.

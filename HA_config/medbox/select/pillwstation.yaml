@@ -1,0 +1,7 @@
+pill_scale_state:
+  name: "Pill Scale State"
+  options:
+    - "Not measuring"
+    - "Measuring initial weight"
+    - "Measuring final weight"
+  initial: "Not measuring"

@@ -1,0 +1,1041 @@
+esphome:
+  name: medibox
+  friendly_name: medibox
+
+  includes:
+    - loadcell.h  # load cell reading stabilizer
+
+  on_boot:
+    - priority: 600
+      then:      
+        - delay: 200ms
+        - lambda: |-
+            ESP_LOGE("on_boot", "esphome test");
+
+mqtt:
+  broker: 3.104.123.46  # IP of the machine running the Mosquitto container
+  username: "cits5506"
+  password: "cits5506passwd"
+  discovery: true
+  discovery_prefix: homeassistant
+
+# mqtt_statestream:
+#   base_topic: homeassistant                # choose any prefix
+#   publish_attributes: true
+#   include:
+#     entities:
+#       - input_number.weight_per_pill
+#       - input_number.buzzer_delay
+#       - input_number.max_reminder_time
+#       - input_select.pill_scale_state
+#       - input_datetime.medibox_morning_time
+#       - input_datetime.medibox_noon_time
+#       - input_datetime.medibox_night_time
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+    version: latest
+
+logger:
+  baud_rate: 115200
+  level: INFO
+
+wifi:
+  networks:
+    - ssid: "BH"
+      password: "12345699"
+    - ssid: "Ace2"
+      password: "12345679"
+  
+  ap:
+    ssid: "Medibox"
+    password: "Med.123456"
+
+  on_connect:
+    then:
+      - logger.log: "Wi-Fi connected"
+      - lambda: |-
+          id(wifi_connected) = true;
+
+  on_disconnect:
+    - then:
+        - lambda: 'id(wifi_connected) = false;'
+        - logger.log: "Wi-Fi disconnected"
+        # - delay: 1min
+        # - logger.log: "Wi-Fi disconnected, restarting to trigger fallback."
+        # - lambda: |-
+        #     App.safe_reboot();
+  #fast_connect: true
+  reboot_timeout: 0s # don't reboot even when there is no wifi, because the medibox is expected to work without wifi
+
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "pAV6+qWo2cOuRC11TgwtsyvzpNquS8cDr+Lgp/0+qsg="
+  actions:
+    - action: set_zero
+      then:
+        - lambda: |-
+            // subtract current reading so next output is zero
+            id(bias) = id(bias) - id(windowed_weight).state / id(lc_k);
+            ESP_LOGI("medibox", "Bias reset to: %f", id(bias));
+    
+    # expose some debugging actions to HA
+    - action: call_start_reminder
+      then:
+        - script.execute: start_reminder
+
+    - action: call_stop_reminder
+      then:
+        - script.execute: stop_reminder
+
+    - action: call_reset_total_pills_taken
+      then:
+        - script.execute: reset_total_pills_taken
+
+    - action: call_set_empty_weight
+      then:
+        - script.execute: set_empty_weight
+
+    # send medication event to HA: "on_time", "missed", "outside_window"
+    - action: call_send_medicine_event
+      variables:
+        status0: string
+      then:
+        - script.execute:
+            id: send_medicine_event
+            status: !lambda 'return status0;'
+    
+    - action: call_fire_logbook_event
+      variables:
+        action: string        # "on_time" | "missed" | "off_sched" | "refill"
+        qty: int              # number of pills (0 for "missed")
+      then:
+        - script.execute:
+            id: fire_logbook_event
+            action: !lambda 'return action;'
+            qty: !lambda 'return qty;'
+  
+  # is esphome connected to HA?
+  on_client_connected:
+    then:
+      - logger.log: "Home Assistant is connected!"
+      - lambda: 'id(HA_connected)=1;'
+  on_client_disconnected:
+    then:
+      - logger.log: "Home Assistant is disconnected!"
+      #- lambda: 'id(HA_connected)=0;'  # fixme
+
+
+ota:
+  - platform: esphome
+    password: "313a33b1a2fbe1103b648b26e66f85cf"
+
+captive_portal:
+
+# Globals
+globals:
+  - id: wifi_connected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: HA_connected
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: HA_synced   # ever synced since boot?
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: timeout_scaler
+    type: int
+    restore_value: no
+    initial_value: '1'  # default is 60: unit time is 1 minute  # fixme
+
+  # load cell
+  - id: bias
+    type: float
+    restore_value: true
+    initial_value: '25000'
+
+  - id: lc_k
+    type: float
+    initial_value: '0.550928e-3f'
+    restore_value: false
+  
+  # LED
+  - id: led_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: wifi_led_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: buzzer_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  # Globals & time
+  - id: pill_count
+    type: int
+    initial_value: '0'
+
+  - id: reminder_active
+    type: bool
+    initial_value: 'false'
+
+  - id: weight_before_open
+    type: float
+    initial_value: '0'
+
+  - id: last_close_ts
+    type: uint64_t
+    initial_value: '0'
+
+  - id: last_open_ts
+    type: uint64_t
+    initial_value: '0'
+
+  - id: mute_until
+    type: uint64_t
+    initial_value: '0'
+
+  - id: reminder_active_ts
+    type: uint64_t
+    initial_value: '0'
+  - id: reminder_active_hhmm
+    type: int[2]
+    initial_value: '{0,0}'
+
+  - id: stabilisation_pending
+    type: bool
+    initial_value: 'false'
+  
+  - id: empty_weight  # weight when no pills is in the box
+    type: float
+    restore_value: true
+    initial_value: '0'
+  
+  - id: rmn_pills_inited
+    type: int
+    initial_value: '0'
+  
+  - id: previous_reminder_ts
+    type: uint64_t
+    restore_value: False
+    initial_value: '0'
+  
+  - id: display_counter
+    type: int
+    restore_value: False
+    initial_value: '0'
+  
+  # total pills taken
+  - id: pills_taken
+    type: int
+    restore_value: false
+    initial_value: '0'
+
+  # manually stop the reminder
+  - id: snooze_count
+    type: uint32_t
+    initial_value: '0'
+
+  - id: snooze_ts
+    type: uint64_t
+    initial_value: '0'
+
+  # buzzer constants
+  - id: const_buzzer_box_open_timeout # start the buzzer again when the box was left open for a long time
+    type: uint32_t
+    initial_value: '120' # fixme
+    restore_value: true
+
+  - id: const_buzzer_snooze_time  # mute the buzzer for this duration when btn pressed
+    type: uint32_t
+    initial_value: '10' # fixme
+    restore_value: true
+  
+  # local persistant copies of the HA entities
+  - id: ha_cpy_per_pill_weight
+    type: float
+    initial_value: '0'
+    restore_value: true
+  - id: ha_cpy_buzzer_delay
+    type: int
+    initial_value: '0'
+    restore_value: true
+  - id: ha_cpy_max_reminder_time
+    type: int
+    initial_value: '0'
+    restore_value: true
+  - id: ha_cpy_rt_1
+    type: int[5]  # ts, hh, mm, ss, hm
+    initial_value: '{0,0,0,0,0}'
+  - id: ha_cpy_rt_2
+    type: int[5]
+    initial_value: '{0,0,0,0,0}'
+  - id: ha_cpy_rt_3
+    type: int[5]
+    initial_value: '{0,0,0,0,0}'
+  
+  
+
+
+# I2C bus
+i2c:
+  sda: 2
+  scl: 1
+  scan: true
+
+
+# GPIO outputs for buzzer and LED
+output:
+  - platform: ledc #gpio
+    pin: 44
+    id: buzzer_output
+
+  - platform: gpio
+    pin: 6
+    id: led_output
+
+  - platform: gpio
+    pin: 43
+    id: wifi_indicator_output
+
+
+interval:
+  # led blinking
+  - interval: 500ms
+    then:
+      # reminder
+      - lambda: |-
+          if(!id(reminder_active)) {
+            id(led_state) = false;
+            id(led_output).turn_off();
+            return;
+          }
+          id(led_state) = !id(led_state);
+
+          // blink if reminder is active
+          // but keep it on without blinking if box is opened, or closed but weight not stabilised
+          if(id(led_state) || id(box_open).state || id(stabilisation_pending)) {
+            id(led_output).turn_on();
+          } else {
+            id(led_output).turn_off();
+          }
+  # - interval: 1000ms
+  #   # wifi indicator
+  #   then:
+  #     - lambda: |-
+  #         ESP_LOGI("medibox", "WIFI   %d  %d", id(wifi_connected), id(wifi_led_state));
+  #         //if(id(wifi_connected)) {
+  #         //  id(wifi_led_state) = false;
+  #         //  id(led_wifi_indicator).turn_off();
+  #         //  return;
+  #         //}
+  #         id(wifi_led_state) = !id(wifi_led_state);
+  #         if(id(wifi_led_state)) {
+  #           ESP_LOGI("medibox", "WIFI   %d  %d  ON", id(wifi_connected), id(wifi_led_state));
+  #           id(led_wifi_indicator).turn_on();
+  #         } else {
+  #           ESP_LOGI("medibox", "WIFI   %d  %d  OFF", id(wifi_connected), id(wifi_led_state));
+  #           id(led_wifi_indicator).turn_off();
+  #         }
+  # buzzer buzzing
+  - interval: 750ms
+    then:
+      - lambda: |-  
+          bool buzzer_delay_passed = id(ha_time).now().timestamp > id(reminder_active_ts) + (uint64_t)(id(ha_cpy_buzzer_delay)) * id(timeout_scaler);
+          if(id(reminder_active) && buzzer_delay_passed) {
+            id(buzzer_state) = !id(buzzer_state);
+            if(id(buzzer_state)) {
+              bool is_box_opened = id(box_open).state;
+              bool is_box_opened_for_a_long_time = id(ha_time).now().timestamp > id(last_open_ts) + id(const_buzzer_box_open_timeout);
+              bool is_muted = id(ha_time).now().timestamp <= id(mute_until);
+              bool is_weight_stabilised = !id(stabilisation_pending);
+              if(!is_muted && (!is_box_opened || is_box_opened_for_a_long_time) && is_weight_stabilised) {
+                id(buzzer_output).turn_on();
+                id(buzzer_output).set_level(0.55f);
+                id(buzzer_output).set_frequency(330);
+              } else {
+                id(buzzer_output).turn_off();
+                id(buzzer_state) = false; // check again in the next round
+              }
+            } else {
+              id(buzzer_output).turn_off();
+            }
+          } else {
+            id(buzzer_output).turn_off();
+          }
+
+  # send notifications if the user forgot to take medicine after max_reminder_time
+  - interval: 5000ms
+    then: 
+      - if:
+          condition:
+            lambda: 'return id(reminder_active) && id(ha_time).now().timestamp > id(reminder_active_ts) + (uint64_t)(id(ha_cpy_max_reminder_time))*id(timeout_scaler);'
+          then:
+            - lambda: |-
+                id(reminder_active) = false;
+                ESP_LOGE("medibox", "You forgot to take medicine!");
+                if(id(calibration_state).state == "Not measuring") {
+                  id(send_medicine_event).execute("missed");
+                  id(fire_logbook_event).execute("missed", 0);
+                }
+            - script.execute:
+                id: publish_event
+                channel: "notification"
+                title: "Dose Missed"
+                message: !lambda |-
+                  char buf[60];
+                  snprintf(buf, sizeof(buf),
+                           "You forgot to take medicine for %02d:%02d!",
+                           id(reminder_active_hhmm)[0], id(reminder_active_hhmm)[1]);
+                  return std::string(buf);
+                status: ""           # not used
+                action: ""           # not used
+                qty: -1
+
+  # wifi indicator
+  - interval: 850ms
+    then:
+      - lambda: 'id(wifi_led_state)=!id(wifi_led_state);'
+      - if:
+          condition:
+            lambda: 'return !id(wifi_connected) && id(wifi_led_state);'
+          then:
+            - light.turn_on:
+                id: led_wifi_indicator
+          else:
+            - light.turn_off: led_wifi_indicator
+
+  # triggers the reminder at the scheduled time
+  - interval: 1s
+    then: 
+      lambda: |-
+        auto now = id(ha_time).now();
+        int now_hm = now.hour * 60 + now.minute;
+
+        // avoid triggering a second time in the same minute
+        if(id(previous_reminder_ts) == now_hm) return;
+        id(previous_reminder_ts) = now_hm;
+
+        if(now_hm == id(ha_cpy_rt_1)[4] || now_hm == id(ha_cpy_rt_2)[4] || now_hm == id(ha_cpy_rt_3)[4]) {
+          id(start_reminder).execute();
+        }
+
+
+
+image:
+  - file: "dis.png"
+    id: icon_ha_disconnected
+    type: BINARY
+    resize: 16x16
+
+font:
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 100
+    id: roboto_16
+    size: 15
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 100
+    id: roboto_8
+    size: 8
+
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x64"
+    address: 0x3C
+    lambda: |-
+      // 1) Pills left (no decimals)
+      it.printf(0, 0, id(roboto_16), "Pills Left: %.0f", id(remaining_pills).state);
+
+      // 2) Box Status
+      // it.printf(0, 16, id(roboto_16), "Magnet: %.0fuT", id(magnetic_strength).state);
+      if(id(box_open).state) {
+        it.print(0, 16, id(roboto_16), "Box Opened");
+      } else {
+        it.print(0, 16, id(roboto_16), "Box Closed");
+      }
+      id(display_counter)++;
+
+      { // 5) HA Connectivity
+        if(!id(HA_connected) || !id(wifi_connected)) {
+          it.image(128-16, 0, id(icon_ha_disconnected));
+          if((id(display_counter)>>1)%8==0){ // display the text for 1u every 8u (1u=1 time unit, depends on the refresh time)
+            it.print(0, 32, id(roboto_16), "Disconnected from");
+            it.print(0, 48, id(roboto_16), "HomeAssistant");
+            return;
+          }
+        }
+      }
+
+      { // 3) Find the most recent upcoming dose time
+        auto now = id(ha_time).now();
+        int now_ts = now.hour * 3600ull + now.minute * 60 + now.second;
+
+        using Thms = int[5];
+        Thms* slots[3] = {&id(ha_cpy_rt_1), &id(ha_cpy_rt_2), &id(ha_cpy_rt_3)};
+        int best_ts = 100000000, bh = 0, bm = 0, bs = 0;
+        for (int i = 0; i < 3; i++) {
+          Thms &slot = *slots[i];
+          int ts = slot[0];
+          int diff = ts - now_ts;
+          
+          if(diff < 0) diff = 86400+diff;
+          if (diff < best_ts) {
+            best_ts = diff;
+            bh = slot[1];
+            bm = slot[2];
+            bs = slot[3];
+          }
+        }
+        // Next dose
+        it.printf(0, 32, id(roboto_16), u8"Next Dose: %02d:%02d", bh, bm);
+
+        // 4.2) remaining time
+        std::string x; bool flag = false;
+        if(best_ts >= 3600) x=x+std::to_string(best_ts/3600)+"h", best_ts%=3600 , flag=true;
+        if(best_ts >= 60 || flag) x=x+std::to_string(best_ts/60)+"m", best_ts%=60 , flag=true;
+        if(best_ts >= 0 || flag) x=x+std::to_string(best_ts)+"s" , flag=true;
+        it.print(15, 48, id(roboto_16), x.c_str());
+      }
+      { // 4.1) Draw clock face at bottom-left:
+        const int cx = 7, cy = 56, r = 5;
+        it.circle( cx, cy, r );// outline circle
+        it.line( cx, cy, cx, cy - r + 2 ); // minute hand (up)
+        it.line( cx, cy, cx + r - 3, cy ); // hour hand (right)
+      }
+      
+sensor:
+  - platform: hx711
+    name: "Medibox Raw Weight"
+    id: raw_weight
+    dout_pin: GPIO9
+    clk_pin: GPIO8
+    gain: 128
+    update_interval: 0.1s   # fixme
+    filters:
+      - lambda: |-
+          return (x + id(bias)) * id(lc_k);
+    on_value:
+      then:
+        - lambda: |-
+            static LoadCell<20> lc(0.3, 0.35);
+            // feed our smoothing/detection:
+            lc.addMeasurement(x);
+            if (lc.isStabilized()) {
+              float w = lc.getLastStabilizedWeight();
+              id(stable_weight).publish_state(w);
+              id(stable_detected).publish_state(true);
+            } else {
+              id(stable_detected).publish_state(false);
+            }
+            float wavg = lc.getWindowAverage();
+            id(windowed_weight).publish_state(wavg);
+    unit_of_measurement: "g"
+    accuracy_decimals: 4
+    
+
+  - platform: template
+    name: "Medibox Stable Weight"
+    id: stable_weight
+    unit_of_measurement: "g"
+    accuracy_decimals: 4
+
+  - platform: template
+    name: "Medibox Current Weight (Window Avg)"
+    id: windowed_weight
+    unit_of_measurement: "g"
+    accuracy_decimals: 4
+
+  - platform: template
+    name: "Remaining Pills"
+    id: remaining_pills
+    unit_of_measurement: ""
+    accuracy_decimals: 0
+  
+  # Read variables from HomeAssistant and save a copy locally
+  - platform: mqtt_subscribe
+    id: max_reminder_time
+    topic: "homeassistant/input_number/max_reminder_time/state"
+    internal: true
+    on_value: 
+      then:
+        lambda: |-
+          id(HA_connected)=1;
+          id(ha_cpy_max_reminder_time) = id(max_reminder_time).state;
+
+  - platform: mqtt_subscribe
+    id: buzzer_delay
+    topic: "homeassistant/input_number/buzzer_delay/state"
+    internal: true
+    on_value: 
+      then:
+        lambda: |-
+          id(ha_cpy_buzzer_delay) = id(buzzer_delay).state;
+
+  - platform: mqtt_subscribe               # numeric
+    topic: "homeassistant/input_number/weight_per_pill/state"
+    id: weight_per_pill
+    internal: true
+    on_value: 
+      then:
+        lambda: |-
+          id(ha_cpy_per_pill_weight) = (float)id(weight_per_pill).state;
+          // update pill count
+          if(id(stable_detected).state) {
+            id(rmn_pills_inited) = 0; // really bad practice... who cares
+            id(notify_weight_stabilized).execute();
+          } // if not stabilized, just wait for it to stabilize
+  
+  # expose the pills_taken global to Home Assistant
+  - platform: template
+    name: "Pills Taken"
+    id: medibox_total_pills_taken
+    lambda: |-
+      return (int)id(pills_taken);
+    update_interval: 2s
+    accuracy_decimals: 0
+
+  # MMC5603 magnetometer readings (uT)
+  # - platform: mmc5603
+  #   address: 0x30
+  #   field_strength_x:
+  #     name: "MMC5603 Field Strength X"
+  #     unit_of_measurement: "uT"
+  #     id: mag_x
+  #   field_strength_y:
+  #     name: "MMC5603 Field Strength Y"
+  #     unit_of_measurement: "uT"
+  #     id: mag_y
+  #   field_strength_z:
+  #     name: "MMC5603 Field Strength Z"
+  #     unit_of_measurement: "uT"
+  #     id: mag_z
+  #   heading:
+  #     name: "MMC5603 Heading"
+  #   update_interval: 0.2s
+
+  
+  # - platform: template
+  #   name: "Magnetic Strength"
+  #   id: magnetic_strength
+  #   unit_of_measurement: "uT"
+  #   accuracy_decimals: 0
+  #   update_interval: 0.2s
+  #   lambda: |-
+  #     float x = id(mag_x).state;
+  #     float y = id(mag_y).state;
+  #     float z = id(mag_z).state;
+  #     return sqrt(x*x + y*y + z*z);
+
+binary_sensor:
+  - platform: template
+    name: "Medibox Weight Stabilized"
+    id: stable_detected
+    on_press: 
+      then:
+        - script.execute: notify_weight_stabilized   # When weight stabilizes after a close, compute pills taken
+
+
+  # Button, mutes buzzer or cancel reminder
+  - platform: gpio
+    pin:
+      number: 4
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Medibox Button"
+    id: medibox_button
+    on_press:
+      then:
+        - logger.log: "Button pressed -> muting buzzer"
+        # calculate mute_until = now + 5 mins
+        - lambda: |-
+            if(!id(reminder_active)) return;
+
+            // mute the buzzer for a few minutes
+            uint64_t now = id(ha_time).now().timestamp;
+            id(mute_until) = now + id(const_buzzer_snooze_time);
+
+            // snooze 5 times within 5 secs to cancel reminder
+            if(now - id(snooze_ts) > 5) id(snooze_ts)=now, id(snooze_count)=0;
+            id(snooze_count) = id(snooze_count) + 1;
+            ESP_LOGI("medibox","Snooze Clicked, cnt=%d", id(snooze_count));
+            if(id(snooze_count) >= 5) {
+              id(reminder_active) = false;
+              id(snooze_ts) = id(snooze_count)=0;
+              id(notify_manual_cancel).execute();
+              id(fire_logbook_event).execute("cancel", 0);
+            }
+            
+  
+  - platform: template
+    name: "Medibox Open"
+    id: box_open
+    lambda: |-
+      return !id(hall_effect_sensor).state;
+      //return id(magnetic_strength).state < 1000.0;
+
+    # Mute any buzzing as soon as box is opened
+    on_press:
+      then:
+        - logger.log: "Box opened"
+        - lambda: |-
+            id(pills_taken) = 0;
+            id(last_open_ts) = id(ha_time).now().timestamp;
+            id(weight_before_open) = id(stable_weight).state;
+
+    # On box close -> record weight_before_open and mute buzzer until stabilized
+    on_release:
+      then:
+        - logger.log: "Box closed"
+        - if:
+            condition:
+              lambda: 'return id(stable_detected).state;'
+            then:
+              - lambda: 'id(stabilisation_pending) = true;'
+              - script.execute: notify_weight_stabilized
+            else:
+              - lambda: |-
+                  ESP_LOGI("medibox","Box closed, waiting for weight to stabilise");
+                  id(stabilisation_pending) = true;
+                  id(last_close_ts) = id(ha_time).now().timestamp;
+                  ESP_LOGI("medibox","Closed: weight_before_open=%.2f", id(weight_before_open));
+  - platform: gpio
+    name: "Hall Effect Sensor"
+    id: hall_effect_sensor
+    pin:
+      number: GPIO5
+      mode: INPUT_PULLUP
+      inverted: true      # A3213 pulls low when magnet is near
+    filters:
+      - delayed_on: 10ms   # Debounce
+      - delayed_off: 10ms
+
+
+
+# LEDs and buzzer
+# buzzer is modelled as a LED here because they can be controlled the same way
+light:
+  - platform: binary
+    id: medibox_led
+    name: "Medibox LED"
+    output: led_output
+    restore_mode: ALWAYS_OFF
+
+  - platform: binary
+    id: medibox_buzzer
+    name: "Medibox Buzzer"
+    output: buzzer_output
+    restore_mode: ALWAYS_OFF
+
+  - platform: binary
+    id: led_wifi_indicator
+    name: "Wifi Indicator"
+    output: wifi_indicator_output
+    restore_mode: ALWAYS_OFF
+
+
+# time:
+#   - platform: homeassistant
+#     id: ha_time
+time:
+  - platform: sntp            # built-in NTP client
+    id: ha_time               # keep the same ID so all lambdas still work
+    timezone: "Australia/Perth"   # or any IANA TZ string
+    # Optional: pick explicit servers if your firewall blocks pool.ntp.org
+    servers:
+      - 0.au.pool.ntp.org
+      - 1.au.pool.ntp.org
+
+# Receive scheduled time from HA and save a copy locally
+text_sensor:
+  - platform: mqtt_subscribe
+    id: calibration_state
+    topic: "homeassistant/input_select/pill_scale_state/state"
+    internal: true
+
+  - platform: mqtt_subscribe
+    id: medibox_morning_time
+    topic: "homeassistant/input_datetime/medibox_morning_time/state"
+    on_value: 
+      then:
+        lambda: |-
+          int hh,mm,ss,tt,hm;
+          sscanf(id(medibox_morning_time).state.c_str(), "%d:%d:%d", &hh,&mm,&ss);
+          tt = 3600 * hh + 60 * mm + ss; hm = 60*hh + mm;
+          ESP_LOGI("medibox","Morning Time changed to %d:%d:%d %d", hh,mm,ss,tt);
+          id(ha_cpy_rt_1)[0] = tt, id(ha_cpy_rt_1)[1] = hh, id(ha_cpy_rt_1)[2] = mm, id(ha_cpy_rt_1)[3] = ss, id(ha_cpy_rt_1)[4] = hm;
+          id(HA_synced) = true;
+          
+  - platform: mqtt_subscribe
+    id: medibox_noon_time
+    topic: "homeassistant/input_datetime/medibox_noon_time/state"
+    on_value: 
+      then:
+        lambda: |-
+          int hh,mm,ss,tt,hm;
+          sscanf(id(medibox_noon_time).state.c_str(), "%d:%d:%d", &hh,&mm,&ss);
+          tt = 3600 * hh + 60 * mm + ss; hm = 60*hh + mm;
+          ESP_LOGI("medibox","Noon Time changed to %d:%d:%d %d", hh,mm,ss,tt);
+          id(ha_cpy_rt_2)[0] = tt, id(ha_cpy_rt_2)[1] = hh, id(ha_cpy_rt_2)[2] = mm, id(ha_cpy_rt_2)[3] = ss, id(ha_cpy_rt_2)[4] = hm;
+          id(HA_synced) = true;
+
+  - platform: mqtt_subscribe
+    id: medibox_night_time
+    topic: "homeassistant/input_datetime/medibox_night_time/state"
+    on_value: 
+      then:
+        lambda: |-
+          int hh,mm,ss,tt,hm;
+          sscanf(id(medibox_night_time).state.c_str(), "%d:%d:%d", &hh,&mm,&ss);
+          tt = 3600 * hh + 60 * mm + ss; hm = 60*hh + mm;
+          ESP_LOGI("medibox","Night Time changed to %d:%d:%d %d", hh,mm,ss,tt);
+          id(ha_cpy_rt_3)[0] = tt, id(ha_cpy_rt_3)[1] = hh, id(ha_cpy_rt_3)[2] = mm, id(ha_cpy_rt_3)[3] = ss, id(ha_cpy_rt_3)[4] = hm;
+          id(HA_synced) = true;
+
+
+script:
+  #####################################################################
+  # ONE generic helper that publishes a JSON blob to a sub-topic named
+  # medibox/<channel>. Everything else calls this.
+  #####################################################################
+  - id: publish_event
+    parameters:
+      channel: string           # "notification" | "medicine" | "logbook"
+      title: string
+      message: string
+      status: string
+      action: string
+      qty: int
+    then:
+      - mqtt.publish_json:
+          topic: !lambda 'return "medibox/" + channel;'
+          payload: !lambda |-
+            ESP_LOGI("medibox","%s   title=%s msg=%s status=%s action=%s qty=%d", channel.c_str(),title.c_str(),message.c_str(),status.c_str(),action.c_str(),qty);
+            // Only add the keys we actually need for this call
+            if (title.size())   root["title"]   = title;
+            if (message.size()) root["message"] = message;
+            if (status.size())  root["status"]  = status;
+            if (action.size())  root["action"]  = action;
+            if (qty >= 0)       root["qty"]     = qty;   // send -1 when unused
+
+  - id: notify_manual_cancel
+    then:
+      - script.execute:
+          id: publish_event
+          channel: "notification"
+          title: "Reminder"
+          message: !lambda |-
+            char buf[64];
+            auto now = id(ha_time).now();
+            snprintf(buf, sizeof(buf),
+                     "You manually stopped the reminder at %02d:%02d.",
+                     now.hour, now.minute);
+            return std::string(buf);
+          status: ""      # not used
+          action: ""      # not used
+          qty: -1
+
+  - id: send_medicine_event
+    parameters:
+      status: string
+    then:
+      - script.execute:
+          id: publish_event
+          channel: "medicine"
+          status: !lambda 'return status;'
+          title: ""       # not used
+          message: ""     # not used
+          action: ""      # not used
+          qty: -1
+
+  # Script to start the medicine reminder (called from Home Assistant)
+  - id: start_reminder
+    then:
+      - lambda: |-
+          if(!id(HA_synced)) return; // don't start reminder without knowing when
+          if(id(reminder_active)) return;
+          // set flag
+          auto now = id(ha_time).now();
+          id(reminder_active_ts) = now.timestamp;
+          id(reminder_active) = true;
+          id(reminder_active_hhmm)[0] = now.hour, id(reminder_active_hhmm)[1] = now.minute;
+          // reset variables
+          id(led_state) = id(buzzer_state) = false;
+          id(mute_until) = 0;
+          ESP_LOGI("reminder","Reminder START");
+      - light.turn_on:
+          id: medibox_led
+  
+  - id: stop_reminder
+    then:
+      - lambda: |-
+          id(reminder_active) = false;
+          ESP_LOGI("reminder","Reminder STOP");
+  
+  - id: reset_total_pills_taken
+    then:
+      - lambda: |-
+          id(pills_taken) = 0;
+  
+  - id: set_empty_weight
+    then:
+      - lambda: |-
+          id(empty_weight) = id(stable_weight).state;
+  
+  - id: fire_logbook_event
+    parameters:
+      action: string
+      qty: int
+    then:
+      - script.execute:
+          id: publish_event
+          channel: "logbook"
+          action: !lambda 'return action;'
+          qty: !lambda 'return qty;'
+          # Build the same human-readable text you used before
+          message: !lambda |-
+            char buf[64]={0};
+            if (action == "on_time") {
+              snprintf(buf, sizeof(buf),
+                       "Took %d pill%s on time.", qty, (qty!=1)?"s":"");
+            } else if (action == "missed") {
+              snprintf(buf, sizeof(buf), "Dose missed.");
+            } else if (action == "off_sched") {
+              snprintf(buf, sizeof(buf),
+                       "Took %d pill%s out of schedule.", qty, (qty!=1)?"s":"");
+            } else if (action == "refill") {
+              snprintf(buf, sizeof(buf),
+                       "Added %d pill%s to the box.", qty, (qty!=1)?"s":"");
+            } else if (action == "cancel") {
+              snprintf(buf, sizeof(buf), "Reminder cancelled manually.");
+            }
+            return std::string(buf);
+          title: ""       # not used
+          status: ""      # not used
+
+  # what to do when the load cell stabilises
+  - id: notify_weight_stabilized
+    then:
+      - lambda: |-
+          if(!id(stable_detected)) return;
+
+          // if the box is open, the weight cannot tell us anything useful, so do nothing.
+          if(id(box_open).state) {
+            ESP_LOGI("medibox",">>> Load cell stabilized but medbox is opened.");
+            id(stabilisation_pending) = false;
+            return;
+          }
+
+          // calculate the number of pills taken during the box is open.
+          ESP_LOGI("medibox",">>> Load cell stabilized.");
+          uint64_t now_ts = id(ha_time).now().timestamp;
+          float diff = id(weight_before_open) - id(stable_weight).state;
+          ESP_LOGI("medibox","weight changed:    %f/%f=%f",diff,id(ha_cpy_per_pill_weight), diff / id(ha_cpy_per_pill_weight));
+
+          // if the medibox is just powered up, then initialise the remaining pills count.
+          if(id(rmn_pills_inited) == 0) {
+            id(rmn_pills_inited) = 1;
+            int rmn_pills = (int)round((id(stable_weight).state-id(empty_weight)) / id(ha_cpy_per_pill_weight));
+            id(remaining_pills).publish_state(rmn_pills);
+          }
+
+          if(diff != diff) { // diff is NaN
+            ESP_LOGI("medibox","system was booted with box opened and `stable_weight` is not yet set.");
+            return;
+          }
+
+          // somebody is waiting for stabilisation (i forgot why i added this but i am too tired to refactor)
+          if(id(stabilisation_pending)) {
+            int pills = (int)round(diff / id(ha_cpy_per_pill_weight));
+            ESP_LOGI("medibox","Taken %d pills", pills);
+            if(pills > 0) {
+              id(pills_taken) = pills;
+            }
+
+            // update the number of remaining pills
+            int rmn_pills = (int)round((id(stable_weight).state-id(empty_weight)) / id(ha_cpy_per_pill_weight));
+            id(remaining_pills).publish_state(rmn_pills);
+
+            // if remider is active, calculate the number of pills taken.
+            // stop the reminders if pills are taken.
+            if(pills < 0) {
+              if(id(calibration_state).state == "Not measuring") {
+                id(fire_logbook_event).execute("refill", -pills);
+              }
+              ESP_LOGI("medibox","Added %d pills", -pills);
+            }
+            if (id(reminder_active)) {
+              if (pills >= 1 && pills < 10000) { // if pills are taken (TODO: do we also stop the reminder if pills are refilled?)
+                id(pill_count) -= pills;
+                id(reminder_active) = false;
+                // stop LED & buzzer
+                id(medibox_led).turn_off();
+                id(medibox_buzzer).turn_off();
+                id(send_medicine_event).execute("on_time");
+                id(fire_logbook_event).execute("on_time", pills);
+                ESP_LOGI("medibox","Pills taken on time");
+              } else {
+                // still missed -> keep buzzing
+                ESP_LOGI("medibox","still missed, keep buzzing.  pills=%d", pills);
+                id(medibox_buzzer).turn_on();
+              }
+            } else {
+              if (pills >= 1 && pills < 10000) {
+                if(id(calibration_state).state == "Not measuring") {
+                  id(send_medicine_event).execute("outside_window");
+                  id(fire_logbook_event).execute("off_sched", pills);
+                }
+                ESP_LOGI("medibox","Pills taken outside of schedule");
+              }
+            }
+          }
+          id(stabilisation_pending) = false;
+
+button:
+  # ──────────────────────────── ZERO / TARE ────────────────────────────
+  - platform: template
+    name: "Medibox · Set Zero"
+    id: btn_set_zero
+    icon: mdi:scale-balance
+    on_press:
+      - lambda: |-
+          id(bias) = id(bias) - id(windowed_weight).state / id(lc_k);
+          ESP_LOGI("medibox", "Bias reset to: %f", id(bias));
+
+  # ────────────────────────── REMINDER CONTROL ─────────────────────────
+  - platform: template
+    name: "Medibox · Start Reminder"
+    on_press:
+      - script.execute: start_reminder
+
+  - platform: template
+    name: "Medibox · Stop Reminder"
+    on_press:
+      - script.execute: stop_reminder
+
+  # ─────────────────────────── HOUSEKEEPING ────────────────────────────
+  - platform: template
+    name: "Medibox · Reset Pills Taken"
+    on_press:
+      - script.execute: reset_total_pills_taken
+
+  - platform: template
+    name: "Medibox · Save Empty-Box Weight"
+    on_press:
+      - script.execute: set_empty_weight

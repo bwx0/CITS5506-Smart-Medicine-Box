@@ -1,0 +1,19 @@
+medibox_logbook_dummy_on_time:
+  name: "On Time"
+  icon: mdi:check
+
+medibox_logbook_dummy_missed:
+  name: "Missed"
+  icon: mdi:close-circle
+
+medibox_logbook_dummy_off_sched:
+  name: "Out of Schedule"
+  icon: mdi:clock-alert-outline
+
+medibox_logbook_dummy_refill:
+  name: "Refilled"
+  icon: mdi:battery-plus-outline
+
+medibox_logbook_dummy_cancel:
+  name: "Cancelled"
+  icon: mdi:bell-cancel-outline

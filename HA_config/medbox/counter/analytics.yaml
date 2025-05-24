@@ -1,0 +1,9 @@
+medicine_on_time:
+  name: "Take Medicine On Time"
+  restore: true
+medicine_missed:
+  name: "Missed Doses"
+  restore: true
+medicine_outside_window:
+  name: "Doses Outside of Schedule"
+  restore: true

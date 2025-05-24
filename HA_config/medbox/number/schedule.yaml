@@ -1,0 +1,15 @@
+max_reminder_time:
+  name: "Reminder Stops in"
+  # initial: 30
+  min: 1
+  max: 60
+  step: 1
+  unit_of_measurement: minutes
+
+buzzer_delay:
+  name: "Buzzer Delay"
+  # initial: 15
+  min: 1
+  max: 60
+  step: 1
+  unit_of_measurement: minutes

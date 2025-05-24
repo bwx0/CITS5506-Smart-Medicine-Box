@@ -1,0 +1,9 @@
+medicine_alert_active:
+  name: Medicine Alert Active
+  initial: false
+buzzer_active:
+  name: Buzzer Active
+  initial: false
+buzzer_muted:
+  name: Buzzer Muted
+  initial: false

@@ -1,0 +1,57 @@
+- sensor:
+  - name: "Displayed Initial weight"
+    state: >
+      {% if is_state('input_select.pill_scale_state','Not measuring') %}
+        Not measuring
+      {% elif is_state('input_select.pill_scale_state','Measuring initial weight') %}
+        {{ states('sensor.medibox_medibox_raw_weight') }} g
+        {% if is_state('binary_sensor.medibox_medibox_weight_stabilized','on') %}
+          (ready)
+        {% else %}
+          (unstabilized)
+        {% endif %}
+      {% else %}
+        {{ states('input_number.weight_a') }} g
+      {% endif %}
+  - name: "Displayed Final weight"
+    state: >
+      {% if is_state('input_select.pill_scale_state','Measuring initial weight') %}
+        Not measuring
+      {% elif is_state('input_select.pill_scale_state','Not measuring') %}
+        Not measuring
+      {% elif is_state('input_select.pill_scale_state','Measuring final weight') %}
+        {{ states('sensor.medibox_medibox_raw_weight') }} g
+        {% if is_state('binary_sensor.medibox_medibox_weight_stabilized','on') %}
+          (ready)
+        {% else %}
+          (unstabilized)
+        {% endif %}
+      {% else %}
+        {{ states('input_number.weight_b') }} g
+      {% endif %}
+  - name: "Displayed Weight Per Pill"
+    state: >
+      {% if is_state('input_select.pill_scale_state','Not measuring') %}
+        {{ states('input_number.weight_per_pill') }} g
+      {% else %}
+        Measure in progress...
+      {% endif %}
+  - name: "Pill Weight Station State"
+    state: "{{ states('input_select.pill_scale_state') }}"
+  - name: "Guide"
+    state: >
+      {% if is_state('input_select.pill_scale_state','Not measuring') %}
+        Click the button below to start.
+      {% elif is_state('input_select.pill_scale_state','Measuring initial weight') %}
+        Remove all the pills, close the box and click again.
+      {% elif is_state('input_select.pill_scale_state','Measuring final weight') %}
+        Put some pills, input how many you've put, close the box and click again.
+      {% endif %}
+
+  - name: "Medibox Status"
+    state: >
+      {% if is_state('binary_sensor.medibox_medibox_open', 'on') %}
+        Open
+      {% else %}
+        Closed
+      {% endif %}

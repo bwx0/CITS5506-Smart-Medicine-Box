@@ -1,0 +1,12 @@
+medibox_morning_time:
+  name: "Medicine Time (Morning)"
+  has_date: false
+  has_time: true
+medibox_noon_time:
+  name: "Medicine Time (Noon)"
+  has_date: false
+  has_time: true
+medibox_night_time:
+  name: "Medicine Time (Night)"
+  has_date: false
+  has_time: true
